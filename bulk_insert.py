@@ -79,7 +79,24 @@ with engine.connect() as con:
                                 if r['cmdCode'] == 'TOTAL':
                                     r['cmdCode'] = '0'
 
-                                bulks = bulks + '{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n'.format(r['pfCode'], r['yr'], r['period'], r['aggrLevel'], r['IsLeaf'], r['rgCode'], r['rtCode'], r['ptCode'], none_conv(r['cmdCode']), none_conv(r['qtCode']), none_conv(r['TradeQuantity']), none_conv(r['NetWeight']), none_conv(r['GrossWeight']), none_conv(r['TradeValue']), none_conv(r['CIFValue']), none_conv(r['FOBValue']))
+                                bulks += '{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n'.format(
+                                    r['pfCode'],
+                                    r['yr'],
+                                    r['period'],
+                                    r['aggrLevel'],
+                                    r['IsLeaf'],
+                                    r['rgCode'],
+                                    r['rtCode'],
+                                    r['ptCode'],
+                                    none_conv(r['cmdCode']),
+                                    none_conv(r['qtCode']),
+                                    none_conv(r['TradeQuantity']),
+                                    none_conv(r['NetWeight']),
+                                    none_conv(r['GrossWeight']),
+                                    none_conv(r['TradeValue']),
+                                    none_conv(r['CIFValue']),
+                                    none_conv(r['FOBValue'])
+                                )
 
                         if bulks:
                             with open(file_name + '.txt', 'w', encoding='utf-8') as f:
