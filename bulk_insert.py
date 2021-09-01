@@ -1,60 +1,83 @@
+'''
+This module performs bulk loading into SQL database which is much faster
+than execute INSERT query many times
+'''
+
+
 import os, json
 import pandas as pd
 from datetime import date
 from sqlalchemy import create_engine
 
+
 def none_conv(v):
-    if v == None:
-        return 0
-    else:
-        return v
+    return v if v is not None else 0
 
-# колонки в csv-файле, которые будем удалять, чтобы можно было сохранить все сразу
-csv_cols = ('Period Desc.', 'Trade Flow', 'Reporter', 'Reporter ISO', 'Partner', 'Partner ISO', '2nd Partner Code', '2nd Partner', '2nd Partner ISO', 'Customs Proc. Code', 'Customs', 'Mode of Transport Code', 'Mode of Transport', 'Commodity', 'Qty Unit', 'Alt Qty Unit Code', 'Alt Qty Unit', 'Alt Qty', 'Flag')
+# These unnecessary columns in csv-file would be dropped later just before saving
+csv_cols = (
+    'Period Desc.',
+    'Trade Flow',
+    'Reporter',
+    'Reporter ISO',
+    'Partner',
+    'Partner ISO',
+    '2nd Partner Code',
+    '2nd Partner',
+    '2nd Partner ISO',
+    'Customs Proc. Code',
+    'Customs',
+    'Mode of Transport Code',
+    'Mode of Transport',
+    'Commodity',
+    'Qty Unit',
+    'Alt Qty Unit Code',
+    'Alt Qty Unit',
+    'Alt Qty',
+    'Flag'
+)
 
-# лог-файл, в нем будем хранить то, что успели обработать
+# Log filename. It keeps the information about what was managed to process
 log_file = 'db_update.log'
 
-# период, по которому будем обновлять БД
+# Update period
 last_year = date.today().year - 3
 years = range(last_year, 2014, -1)
 
-# открываем лог-файл того, что уже сделали
+# Skip already processed to the new
 with open(log_file, 'r') as db_f:
     files_done = [x.strip() for x in list(db_f)] 
 
-# устанавливаем соединение с БД
-engine = create_engine('mysql://root:dvorak123@localhost:3306/agroexport')
+# Database connection
+engine = create_engine('mysql://root:zxcvbn123@localhost:3306/uncomtrade')
 
 with engine.connect() as con:
     for year in years:
         folder = './' + str(year) + '/'
+
         with os.scandir(folder) as dir:
             for fl in dir:
                 file_name = folder + fl.name
+
                 if not fl.name.startswith('.') and fl.is_file() and file_name not in files_done:
                     print(file_name)
 
-                    # будем загружать файлы или нет. по-умолчанию -- нет
                     execute = False
 
-                    # исходные данные в формате JSON
+                    # JSON files to load
                     if file_name[-4:] == 'json':
                      
-                        # загружаем данные в формате json
                         with open(file_name, 'r', encoding='utf-8') as f:
                             j = json.load(f)
 
                         bulks = ''
 
-                        # есть ли вообще что-то в выборке
+                        # Only non-zero values
                         if j['validation']['count']['value'] > 0:
 
                             for r in j['dataset']:
-                                # не является ли текущая запись суммой. исключаем ее
+                                # Doesn't need totals
                                 if r['cmdCode'] == 'TOTAL':
                                     r['cmdCode'] = '0'
-                                    #continue
 
                                 bulks = bulks + '{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n'.format(r['pfCode'], r['yr'], r['period'], r['aggrLevel'], r['IsLeaf'], r['rgCode'], r['rtCode'], r['ptCode'], none_conv(r['cmdCode']), none_conv(r['qtCode']), none_conv(r['TradeQuantity']), none_conv(r['NetWeight']), none_conv(r['GrossWeight']), none_conv(r['TradeValue']), none_conv(r['CIFValue']), none_conv(r['FOBValue']))
 
@@ -65,17 +88,15 @@ with engine.connect() as con:
 
                             del bulks
 
-                        # освобождаем json-структуру
                         del j
 
-                    # исходные данные в формате CSV
+                    # CSV files to load
                     if file_name[-3:] == 'csv':
                         csv = pd.read_csv(file_name, low_memory=False)
 
-                        # проверяем выборку: пустая или не пустая
+                        # Does it have something?
                         if not csv.isnull().loc[0, 'Year']:
-                            for c in csv_cols:
-                                del csv[c]
+                            csv.drop(csv_cols, axis=1, inplace=True)
 
                             t = csv['Commodity Code'] == 'TOTAL'
                             csv.loc[t, 'Commodity Code'] = 0
@@ -89,13 +110,10 @@ with engine.connect() as con:
                             #res = con.execute("LOAD DATA INFILE '{}' IGNORE INTO TABLE comtrade FIELDS TERMINATED BY ',' LINES TERMINATED BY '\r\n' (Classification, Year, Period, AggrLevel, IsLeaf, TradeFlow, Reporter, Partner, Comm, QtyUnit, Qty, NetWeight, GrossWeight, TradeValue, CIFTradeValue, FOBTradeValue)".format(file_name + '.txt'))
                             res = con.execute("LOAD DATA INFILE '{}' IGNORE INTO TABLE comtrade FIELDS TERMINATED BY ',' LINES TERMINATED BY '\r\n'".format(file_name + '.txt'))
 
-                            # если ошибки при добавлении не было
                             files_done.append(file_name)
 
                         except:
                             print('Error in file: ' + file_name + '.txt')
-                        #    quit()
-
 
                         with open(log_file, 'w') as db_f:
                             db_f.write('\n'.join(files_done))
